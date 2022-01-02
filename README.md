@@ -1,2 +1,2 @@
 # oxidizer
-Rustaria Installer that extracts Terraria Assets.
+Oxidizes Terraria into a format that Rustaria can understand.
