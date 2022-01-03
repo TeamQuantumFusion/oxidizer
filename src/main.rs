@@ -1,23 +1,23 @@
-use std::path::{Path, PathBuf};
-use indicatif::{ProgressBar, ProgressStyle};
 use crate::asset::Asset;
+use indicatif::{ProgressBar, ProgressStyle};
 
 mod asset;
 mod util;
 mod xnb;
 
 fn main() {
-    let content = Path::new("./");
-    if !content.canonicalize().unwrap().to_str().unwrap().ends_with("Content") {
+    let cwd = std::env::current_dir().expect("Could not access current working directory");
+    if cwd.file_stem().unwrap() != "Content" {
         panic!("Not launched from Terraria's \"Content\" directory.")
     }
 
-    let mut progress_bar = ProgressBar::new(1).with_style(ProgressStyle::default_bar().template("{msg} {wide_bar:.cyan} {pos}/{len}").progress_chars("=> "));
+    let mut progress_bar = ProgressBar::new(1).with_style(
+        ProgressStyle::default_bar()
+            .template("{msg} {wide_bar:.cyan} {pos}/{len}")
+            .progress_chars("=> "),
+    );
 
-    let assets = asset::collect_assets(content, &mut progress_bar);
+    let assets = asset::collect_assets(&cwd, &mut progress_bar);
 
-
-    for x in assets {
-
-    }
+    for x in assets {}
 }

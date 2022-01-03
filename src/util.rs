@@ -1,45 +1,43 @@
-use std::fs::DirEntry;
-use std::path::PathBuf;
-use std::slice::Iter;
-
-use indicatif::{ProgressBar, ProgressBarIter};
+use indicatif::ProgressBar;
+use std::path::Path;
 
 pub struct TerrariaFile {
     pub name: String,
 }
 
-pub fn seek_files<'a>(dir: &PathBuf, progress_bar: &'a mut ProgressBar, message: &'static str) -> FileIterator<'a> {
+pub fn seek_files<'a>(
+    dir: &Path,
+    progress_bar: &'a mut ProgressBar,
+    message: &'static str,
+) -> FileIterator<'a> {
     let dir = std::fs::read_dir(dir).unwrap();
-    let mut out = Vec::new();
-    for x in dir {
-        let entry = x.unwrap();
-        out.push(TerrariaFile { name: entry.file_name().to_str().unwrap().trim_end_matches(".xnb").into() })
-    };
+    let files = dir
+        .map(|entry| {
+            let entry = entry.unwrap();
+            TerrariaFile {
+                name: entry.path().file_stem().unwrap().to_str().unwrap().into(),
+            }
+        })
+        .collect::<Vec<_>>();
 
-    progress_bar.set_length(out.len() as u64);
+    progress_bar.set_length(files.len() as u64);
     progress_bar.set_message(message);
-    FileIterator::new(out, progress_bar)
+    FileIterator {
+        files,
+        progress_bar,
+    }
 }
 
 pub struct FileIterator<'a> {
-    progress: &'a ProgressBar,
-    data: Vec<TerrariaFile>,
-}
-
-impl<'a> FileIterator<'a> {
-    pub fn new(data: Vec<TerrariaFile>, progress_bar: &'a mut ProgressBar) -> FileIterator<'a> {
-        Self {
-            progress: progress_bar,
-            data,
-        }
-    }
+    progress_bar: &'a ProgressBar,
+    files: Vec<TerrariaFile>,
 }
 
 impl<'a> Iterator for FileIterator<'a> {
     type Item = TerrariaFile;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.progress.inc(1);
-        self.data.pop()
+        self.progress_bar.inc(1);
+        self.files.pop()
     }
 }

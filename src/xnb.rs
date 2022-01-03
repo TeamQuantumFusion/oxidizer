@@ -1,96 +1,109 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
 
-use bytes::Buf;
-use image::{ColorType, ImageBuffer, Rgba, RgbaImage, RgbImage};
-use lzxd::{Lzxd, WindowSize};
 use crate::asset::Sprite;
+use bytes::{Buf, Bytes};
+use image::RgbaImage;
+use lzxd::{Lzxd, WindowSize};
+use thiserror::Error;
 
 const HEADER_SIZE: i32 = 14;
 
 pub enum XNBFile {
     Texture(Sprite),
-    Unknown
+    Unknown,
 }
 
-pub fn convert_xnb_file(file_in: PathBuf) -> Option<XNBFile> {
-    if let Ok(mut file) = File::open(file_in) {
-        let mut vec = Vec::new();
-        file.read_to_end(&mut vec);
-        let mut data = vec.as_slice();
+#[derive(Debug, Error)]
+pub enum XNBError {
+    #[error("Not an XNB file")]
+    NotAnXNBFile,
+    #[error("Shared Resources are not supported.")]
+    SharedResourcesNotSupported,
+    #[error("Primary asset not found.")]
+    PrimaryAssetNotFound,
 
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
 
-        if data.get_u8() != b'X' || data.get_u8() != b'N' || data.get_u8() != b'B' {
-            panic!("Not an XNB File");
-        }
+pub fn convert_xnb_file(file_in: PathBuf) -> Result<XNBFile, XNBError> {
+    let mut file = File::open(file_in)?;
+    let mut vec = Vec::new();
+    file.read_to_end(&mut vec)?;
+    let mut data = Bytes::from(vec);
 
-        // platform / version
-        data.get_u8();
-        data.get_u8();
+    if data.split_to(3).as_ref() != b"XNB" {
+        return Err(XNBError::NotAnXNBFile);
+    }
 
-        let compressed = (data.get_u8() & 0x80) != 0;
+    let _platform = data.get_u8();
+    let _version = data.get_u8();
 
-        let compressed_size = data.get_i32_le();
-        let decompressed_size = if compressed { data.get_i32_le() } else {
-            compressed_size
-        };
+    let compressed = (data.get_u8() & 0x80) != 0;
 
-        if compressed {
-            let vec = decompress_lzx(&mut data, (compressed_size - HEADER_SIZE) as u32, decompressed_size as u32);
-            Some(read_xnb_data(&mut vec.as_slice()))
-        } else {
-            Some(read_xnb_data(&mut data))
-        }
+    let compressed_size = data.get_i32_le();
+    let decompressed_size = if compressed {
+        data.get_i32_le()
     } else {
-        None
+        compressed_size
+    };
+
+    if compressed {
+        let vec = decompress_lzx(
+            &mut data,
+            (compressed_size - HEADER_SIZE) as u32,
+            decompressed_size as u32,
+        );
+        read_xnb_data(&mut Bytes::from(vec))
+    } else {
+        read_xnb_data(&mut data)
     }
 }
 
-fn read_xnb_data(input: &mut &[u8]) -> XNBFile {
-    let type_reader_count = xnb_get_int(input);
+fn read_xnb_data(input: &mut Bytes) -> Result<XNBFile, XNBError> {
+    let type_reader_count = get_varint(input);
     let mut type_reader_name = xnb_get_string(input);
 
     // reader version
-    input.get_i32();
+    let _reader_version = input.get_i32();
 
-
-    let asem_info_index = type_reader_name.find(',');
-    if let Some(index) = asem_info_index {
-        type_reader_name = (&type_reader_name[0..index]).parse().unwrap()
+    if let Some(asem_info_index) = type_reader_name.find(',') {
+        type_reader_name.truncate(asem_info_index);
     }
 
-    for i in 1..type_reader_count {
+    for _ in 1..type_reader_count {
         xnb_get_string(input);
         input.get_i32();
     }
 
-    if xnb_get_int(input) != 0 {
-        panic!("Shared Resources are not Supported.")
+    let resources = get_varint(input);
+    if resources != 0 {
+        return Err(XNBError::SharedResourcesNotSupported);
     }
 
-    if xnb_get_int(input) != 1 {
-        panic!("Primary Asset is null; wtf")
+    let assets = get_varint(input);
+    if assets != 1 {
+        return Err(XNBError::PrimaryAssetNotFound);
     }
 
-    match type_reader_name.as_str() {
+    Ok(match type_reader_name.as_str() {
         "Microsoft.Xna.Framework.Content.Texture2DReader" => {
-            let surface_format = input.get_u32_le();
+            let _surface_format = input.get_u32_le();
             let width = input.get_u32_le();
             let height = input.get_u32_le();
-            let mipmaps = input.get_u32_le();
-            let size = input.get_u32_le();
+            let _mipmaps = input.get_u32_le();
+            let _size = input.get_u32_le();
 
             XNBFile::Texture(RgbaImage::from_raw(width, height, input.to_vec()).unwrap())
         }
         _ => XNBFile::Unknown,
-    }
+    })
 }
 
 //ByteBuffer input, int inputLength, ByteBuffer output, int outputLength
-fn decompress_lzx(input: &mut &[u8], input_length: u32, output_length: u32) -> Vec<u8> {
+fn decompress_lzx(input: &mut Bytes, input_length: u32, output_length: u32) -> Vec<u8> {
     let mut remaining = input_length;
     let mut out = Vec::with_capacity(output_length as usize);
     let mut chunk_decompressor = Lzxd::new(WindowSize::KB64);
@@ -117,7 +130,6 @@ fn decompress_lzx(input: &mut &[u8], input_length: u32, output_length: u32) -> V
             return out;
         }
 
-
         let chunk = &input[0..block_size as usize];
         let result = chunk_decompressor.decompress_next(chunk);
         input.advance(block_size as usize);
@@ -132,7 +144,7 @@ fn decompress_lzx(input: &mut &[u8], input_length: u32, output_length: u32) -> V
     out
 }
 
-fn xnb_get_int(input: &mut &[u8]) -> i32 {
+fn get_varint(input: &mut Bytes) -> i32 {
     let mut result: i32 = 0;
     let mut bits_read = 0;
     loop {
@@ -148,9 +160,8 @@ fn xnb_get_int(input: &mut &[u8]) -> i32 {
     result
 }
 
-fn xnb_get_string(input: &mut &[u8]) -> String {
-    let length = xnb_get_int(input);
-    let bytes = input.copy_to_bytes(length as usize);
-    let out = String::from_utf8(bytes.to_vec()).unwrap();
-    out
+fn xnb_get_string(input: &mut Bytes) -> String {
+    let length = get_varint(input);
+    let bytes = input.split_to(length as usize);
+    String::from_utf8(bytes.to_vec()).unwrap()
 }
