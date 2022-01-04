@@ -65,7 +65,9 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
+ "regex",
  "terminal_size",
+ "unicode-width",
  "winapi",
 ]
 
@@ -192,6 +194,8 @@ dependencies = [
  "lazy_static",
  "number_prefix",
  "regex",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
@@ -317,6 +321,7 @@ name = "oxidizer"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "console",
  "image",
  "indicatif",
  "lzxd",
@@ -456,6 +461,18 @@ dependencies = [
  "miniz_oxide 0.4.4",
  "weezl",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ed742d4ea2bd1176e236172c8429aaf54486e7ac098db29ffe6529e0ce50973"
 
 [[package]]
 name = "unicode-xid"
