@@ -66,7 +66,7 @@ fn read_xnb_data(input: &mut Bytes) -> Result<XNBFile, XNBError> {
     let type_reader_count = get_varint(input);
     let mut type_reader_name = xnb_get_string(input);
 
-    // reader version
+    // reader / version
     let _reader_version = input.get_i32();
 
     if let Some(asem_info_index) = type_reader_name.find(',') {
@@ -96,7 +96,8 @@ fn read_xnb_data(input: &mut Bytes) -> Result<XNBFile, XNBError> {
             let _mipmaps = input.get_u32_le();
             let _size = input.get_u32_le();
 
-            XNBFile::Texture(RgbaImage::from_raw(width, height, input.to_vec()).unwrap())
+            let texture = RgbaImage::from_raw(width, height, input.to_vec()).unwrap();
+            XNBFile::Texture(texture)
         }
         _ => XNBFile::Unknown,
     })
