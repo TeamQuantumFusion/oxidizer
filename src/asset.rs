@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fmt::Debug;
+use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgba};
 use image::DynamicImage::ImageLumaA8;
-use indicatif::ProgressBar;
+use indicatif::{ParallelProgressIterator, ProgressBar};
+use rayon::iter::IntoParallelRefIterator;
 
-use crate::{Progress, registry, util, xnb};
+use crate::{ registry, util, xnb};
 use crate::util::TerrariaFile;
 use crate::xnb::XNBFile;
 use crate::xnb::XNBFile::Texture;
@@ -15,7 +17,7 @@ use crate::xnb::XNBFile::Texture;
 pub type Sprite = ImageBuffer<Rgba<u8>, Vec<u8>>;
 
 pub struct ResourceManager {
-    pub sprites: HashMap<String, PathBuf>,
+    pub sprite_path: PathBuf
 }
 
 pub enum ResourcePath {
@@ -35,34 +37,11 @@ impl ResourcePath {
 }
 
 impl ResourceManager {
-
     pub fn get_sprite(&self, path: ResourcePath) -> Option<Sprite> {
-        let path = self.sprites.get(&*path.get_string())?;
-        let xnb = xnb::convert_xnb_file(path.to_path_buf()).unwrap();
+        let xnb = xnb::convert_xnb_file(self.sprite_path.join(path.get_string() + ".xnb")).unwrap();
         match xnb {
             Texture(sprite) => Some(sprite),
             _ => None
         }
     }
-}
-
-
-
-pub fn collect_assets(content: &Path, progress: &mut Progress) -> ResourceManager {
-    let mut manager = ResourceManager { sprites: Default::default() };
-
-    let images = content.join("Images");
-    let dir = images.read_dir().unwrap();
-    for entry in progress.iter_unsized(dir, 12000, "Indexing Images") {
-        let dir = entry.unwrap();
-        let string = dir.file_name();
-        if string.to_str().unwrap().ends_with(".xnb") {
-            manager.sprites.insert(string.to_str().unwrap().trim_end_matches(".xnb").to_string(), dir.path());
-        }
-    };
-
-    progress.print(format!("Indexed {} images", manager.sprites.len()));
-
-
-    manager
 }

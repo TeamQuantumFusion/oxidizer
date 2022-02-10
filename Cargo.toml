@@ -9,6 +9,7 @@ edition = "2021"
 lzxd = "0.1.4"
 bytes = "1.1.0"
 image = "0.23.14"
-indicatif = {version = "0.16.2", features = ["improved_unicode"] }
+indicatif = {version = "0.16.2", features = ["improved_unicode", "rayon"] }
 console = "0.15.0"
+rayon = "1.5.1"
 thiserror = "1.0.30"

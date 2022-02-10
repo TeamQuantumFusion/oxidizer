@@ -1,16 +1,14 @@
-use image::ImageError;
-use image::imageops::FilterType;
+use console::{Color, style};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::asset::{collect_assets, ResourceManager, ResourcePath};
-use crate::progress_bar::Progress;
-use crate::xnb::XNBFile::Texture;
+use crate::asset::{ResourceManager, ResourcePath};
 
 mod asset;
 mod util;
 mod xnb;
 mod mapper;
 mod registry;
-mod progress_bar;
 
 fn main() {
     let cwd = std::env::current_dir().expect("Could not access current working directory");
@@ -18,40 +16,45 @@ fn main() {
         panic!("Not launched from Terraria's \"Content\" directory.")
     }
 
-    let mut progress_bar = Progress::new();
+    let mut progress_bar = new_progress_bar();
 
     let out = cwd.join("rustaria");
     let sprite = out.join("sprite");
 
-    let manager = collect_assets(&cwd, &mut progress_bar);
+    let manager = ResourceManager {
+        sprite_path: cwd.join("Images")
+    };
 
     let tile = sprite.join("tile");
     std::fs::create_dir_all(&tile).unwrap();
+    progress_bar.set_length((registry::BLOCK_TILES.len() + registry::WALLS.len()) as u64);
 
-    for id in progress_bar.iter(registry::BLOCK_TILES.iter(), "Mapping Tiles") {
+
+    registry::BLOCK_TILES.par_iter().progress_with(progress_bar.clone()).for_each(|id| {
         if let Some(sprite) = manager.get_sprite(ResourcePath::Tile(id.0)) {
             let sprite = mapper::remap_tile(sprite);
             let result = sprite.save(tile.join(format!("{}.png", id.1)));
 
-            result.map_err(|error| {
-                progress_bar.print(format!("Failed to export {} {}", id.1, error));
-            }).unwrap();
+            if let Err(error) = result {
+                progress_bar.println(format!("Failed to export {} {}", id.1, error));
+            }
         }
-    }
+    });
 
     let wall = sprite.join("wall");
     std::fs::create_dir_all(&wall).unwrap();
 
-    for id in progress_bar.iter(registry::WALLS.iter(), "Mapping Walls") {
+
+    registry::WALLS.par_iter().progress_with(progress_bar.clone()).for_each(|id| {
         if let Some(sprite) = manager.get_sprite(ResourcePath::Wall(id.0)) {
             let sprite = mapper::remap_wall(sprite);
             let result = sprite.save(wall.join(format!("{}.png", id.1)));
 
-            result.map_err(|error| {
-                progress_bar.print(format!("Failed to export {} {}", id.1, error));
-            }).unwrap();
+            if let Err(error) = result {
+                progress_bar.println(format!("Failed to export {} {}", id.1, error));
+            }
         }
-    }
+    });
 
 
     //let test = sprite.join("test");
@@ -64,3 +67,20 @@ fn main() {
     //}
 }
 
+
+
+
+pub fn new_progress_bar() -> ProgressBar {
+    let header = "{msg} [{prefix}".to_owned() + "{percent}% ";
+    let footer = "{eta} {pos}".to_owned() + &*style("/").fg(Color::White).to_string() + "{len}";
+
+    let format = header + "{wide_bar:.cyan}\x1b[m] " + &*footer;
+    let progress_bar = ProgressBar::new(1).with_style(
+        ProgressStyle::default_bar()
+            .template(&*format)
+            .progress_chars("##-"),
+    );
+
+
+    progress_bar
+}
